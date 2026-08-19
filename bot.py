@@ -100,6 +100,49 @@ def esc(text: str) -> str:
     return text
 
 
+# ---------- SLASH BUYRUQLAR (Menu tugmasi orqali) ----------
+@dp.message(F.text == "/vote")
+async def cmd_vote(message: Message, state: FSMContext):
+    await state.clear()
+    await vote_info(message)
+
+
+@dp.message(F.text == "/newproject")
+async def cmd_newproject(message: Message, state: FSMContext):
+    await state.clear()
+    await create_project_start(message, state)
+
+
+@dp.message(F.text == "/myprojects")
+async def cmd_myprojects(message: Message, state: FSMContext):
+    await state.clear()
+    await my_projects(message)
+
+
+@dp.message(F.text == "/balance")
+async def cmd_balance(message: Message, state: FSMContext):
+    await state.clear()
+    await show_balance(message)
+
+
+@dp.message(F.text == "/referral")
+async def cmd_referral(message: Message, state: FSMContext):
+    await state.clear()
+    await get_ref_link(message)
+
+
+@dp.message(F.text == "/top")
+async def cmd_top(message: Message, state: FSMContext):
+    await state.clear()
+    await show_rating(message)
+
+
+@dp.message(F.text == "/help")
+async def cmd_help(message: Message, state: FSMContext):
+    await state.clear()
+    await show_guide(message)
+
+
 # ---------- MENYU TUGMALARI — HAR DOIM HOLATNI TOZALAB, TO'G'RI BO'LIMGA O'TADI ----------
 @dp.message(F.text.in_(MENU_BUTTONS))
 async def global_menu_handler(message: Message, state: FSMContext):
@@ -456,9 +499,24 @@ def _run_health_server():
     server.serve_forever()
 
 
+async def _set_bot_commands():
+    from aiogram.types import BotCommand
+    await bot.set_my_commands([
+        BotCommand(command="start", description="🏠 Botni qayta ishga tushirish"),
+        BotCommand(command="vote", description="📥 Ovoz berish"),
+        BotCommand(command="newproject", description="➕ Loyiha qo'shish (Lider)"),
+        BotCommand(command="myprojects", description="⚙️ Mening loyihalarim"),
+        BotCommand(command="balance", description="👤 Balansim"),
+        BotCommand(command="referral", description="🔗 Referal link"),
+        BotCommand(command="top", description="📊 Reyting"),
+        BotCommand(command="help", description="ℹ️ Yo'riqnoma"),
+    ])
+
+
 async def main():
     logging.basicConfig(level=logging.INFO)
     threading.Thread(target=_run_health_server, daemon=True).start()
+    await _set_bot_commands()
     print("🚀 Bot ishga tushdi...")
     await dp.start_polling(bot)
 
