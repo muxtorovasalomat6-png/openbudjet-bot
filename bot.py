@@ -479,14 +479,16 @@ async def show_guide(message: Message):
     )
 
 
+# ---------- HEALTH CHECK SERVER (Render & UptimeRobot uchun) ----------
 class _HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
+        self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Bot ishlamoqda")
+        self.wfile.write(b"Bot ishlamoqda...")
 
     def log_message(self, format, *args):
-        pass  # keraksiz loglarni o'chirish
+        pass  # Keraksiz loglarni o'chirish
 
 
 def _run_health_server():
