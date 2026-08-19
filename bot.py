@@ -13,7 +13,7 @@ from aiogram.enums import ChatMemberStatus
 
 # ==================== SOZLAMALAR ====================
 # Tokenni endi kodga yozmaymiz — Railway'da Environment Variable sifatida beriladi
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+BOT_TOKEN = os.environ.get("8683785795:AAEGb1FYQAH6ARnNJqZM5OI-v5Zbh32y39o", "")
 CHANNEL_USERNAME = os.environ.get("CHANNEL_USERNAME", "Global_matematika37maktab")
 # ====================================================
 
