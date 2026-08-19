@@ -2,6 +2,8 @@ import asyncio
 import logging
 import os
 import sqlite3
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import CommandStart, CommandObject
@@ -438,8 +440,25 @@ async def show_guide(message: Message):
     )
 
 
+class _HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot ishlamoqda")
+
+    def log_message(self, format, *args):
+        pass  # keraksiz loglarni o'chirish
+
+
+def _run_health_server():
+    port = int(os.environ.get("PORT", "10000"))
+    server = HTTPServer(("0.0.0.0", port), _HealthHandler)
+    server.serve_forever()
+
+
 async def main():
     logging.basicConfig(level=logging.INFO)
+    threading.Thread(target=_run_health_server, daemon=True).start()
     print("🚀 Bot ishga tushdi...")
     await dp.start_polling(bot)
 
