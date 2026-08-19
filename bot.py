@@ -12,13 +12,9 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.enums import ChatMemberStatus
 
 # ==================== SOZLAMALAR ====================
-# Tokenni endi kodga yozmaymiz — Railway'da Environment Variable sifatida beriladi
-BOT_TOKEN = os.environ.get("8683785795:AAEGb1FYQAH6ARnNJqZM5OI-v5Zbh32y39o", "")
+BOT_TOKEN = "8683785795:AAEGb1FYQAH6ARnNJqZM5OI-v5Zbh32y39o"
 CHANNEL_USERNAME = os.environ.get("CHANNEL_USERNAME", "Global_matematika37maktab")
 # ====================================================
-
-if not BOT_TOKEN:
-    raise RuntimeError("BOT_TOKEN environment variable topilmadi! Railway sozlamalarida qo'shing.")
 
 MENU_BUTTONS = [
     "📥 Ovoz berish", "➕ Loyiha qo'shish (Lider)",
