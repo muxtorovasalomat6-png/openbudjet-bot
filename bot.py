@@ -12,9 +12,16 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.enums import ChatMemberStatus
 
 # ==================== SOZLAMALAR ====================
-BOT_TOKEN = "8683785795:AAEGb1FYQAH6ARnNJqZM5OI-v5Zbh32y39o"
-CHANNEL_USERNAME = os.environ.get("CHANNEL_USERNAME", "Global_matematika37maktab")
+# Tokenni endi kodga yozmaymiz — Railway'da Environment Variable sifatida beriladi
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+# CHANNEL_USERNAMES: vergul bilan ajratilgan kanal/chat username'lari
+CHANNEL_USERNAMES = [c.strip() for c in os.environ.get(
+    "CHANNEL_USERNAMES", "OpenBudjetBotChat,OpenBudjetBotYozmaChat"
+).split(",") if c.strip()]
 # ====================================================
+
+if not BOT_TOKEN:
+    raise RuntimeError("BOT_TOKEN environment variable topilmadi! Railway sozlamalarida qo'shing.")
 
 MENU_BUTTONS = [
     "📥 Ovoz berish", "➕ Loyiha qo'shish (Lider)",
@@ -67,12 +74,50 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
 
+@dp.message.middleware()
+async def subscription_message_middleware(handler, event: Message, data: dict):
+    # /start har doim ruxsat etiladi — u o'zi tekshiruvni ko'rsatadi
+    if event.text and event.text.startswith("/start"):
+        return await handler(event, data)
+    if not await check_sub(event.from_user.id):
+        await event.answer(
+            "⚠️ Botdan foydalanish uchun avval rasmiy kanal/chatlarimizga a'zo bo'ling!\n\n"
+            "Barchasiga a'zo bo'lgach, «✅ A'zolikni tekshirish» tugmasini bosing.",
+            reply_markup=build_sub_keyboard()
+        )
+        return
+    return await handler(event, data)
+
+
+@dp.callback_query.middleware()
+async def subscription_callback_middleware(handler, event: CallbackQuery, data: dict):
+    if event.data == "check_sub_now":
+        return await handler(event, data)
+    if not await check_sub(event.from_user.id):
+        await event.answer("⚠️ Avval kanalga a'zo bo'ling!", show_alert=True)
+        return
+    return await handler(event, data)
+
+
 async def check_sub(user_id: int) -> bool:
-    try:
-        member = await bot.get_chat_member(chat_id=f"@{CHANNEL_USERNAME}", user_id=user_id)
-        return member.status not in [ChatMemberStatus.LEFT, ChatMemberStatus.KICKED]
-    except Exception:
-        return False
+    """Barcha kanallar/chatlarga a'zo bo'lsagina True qaytaradi."""
+    for channel in CHANNEL_USERNAMES:
+        try:
+            member = await bot.get_chat_member(chat_id=f"@{channel}", user_id=user_id)
+            if member.status in [ChatMemberStatus.LEFT, ChatMemberStatus.KICKED]:
+                return False
+        except Exception:
+            return False
+    return True
+
+
+def build_sub_keyboard():
+    buttons = [
+        [InlineKeyboardButton(text=f"📢 {ch} ga a'zo bo'lish", url=f"https://t.me/{ch}")]
+        for ch in CHANNEL_USERNAMES
+    ]
+    buttons.append([InlineKeyboardButton(text="✅ A'zolikni tekshirish", callback_data="check_sub_now")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 def main_menu():
@@ -168,14 +213,10 @@ async def start_cmd(message: Message, command: CommandObject, state: FSMContext)
     username = (message.from_user.username or "").lower()
 
     if not await check_sub(user_id):
-        sub_kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="📢 Kanalga a'zo bo'lish", url=f"https://t.me/{CHANNEL_USERNAME}")],
-            [InlineKeyboardButton(text="✅ A'zolikni tekshirish", callback_data="check_sub_now")]
-        ])
         await message.answer(
-            "⚠️ Botdan foydalanish uchun rasmiy kanalimizga a'zo bo'ling!\n\n"
-            "A'zo bo'lgach, «✅ A'zolikni tekshirish» tugmasini bosing.",
-            reply_markup=sub_kb
+            "⚠️ Botdan foydalanish uchun rasmiy kanal/chatlarimizga a'zo bo'ling!\n\n"
+            "Barchasiga a'zo bo'lgach, «✅ A'zolikni tekshirish» tugmasini bosing.",
+            reply_markup=build_sub_keyboard()
         )
         return
 
@@ -479,16 +520,14 @@ async def show_guide(message: Message):
     )
 
 
-# ---------- HEALTH CHECK SERVER (Render & UptimeRobot uchun) ----------
 class _HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
-        self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Bot ishlamoqda...")
+        self.wfile.write(b"Bot ishlamoqda")
 
     def log_message(self, format, *args):
-        pass  # Keraksiz loglarni o'chirish
+        pass  # keraksiz loglarni o'chirish
 
 
 def _run_health_server():
