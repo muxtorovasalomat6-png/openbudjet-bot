@@ -135,6 +135,8 @@ class CreateProjectState(StatesGroup):
     description = State()
     photo = State()
     verifier_username = State()
+    approved_group = State()
+    rejected_group = State()
 
 
 class UploadPhotoState(StatesGroup):
@@ -170,7 +172,7 @@ CREATE TABLE IF NOT EXISTS projects (
 cursor.execute("CREATE TABLE IF NOT EXISTS sent_photos (photo_hash TEXT PRIMARY KEY)")
 
 # Eski bazalarda yangi ustunlar bo'lmasligi mumkin — xavfsiz qo'shamiz
-for col_def in ["description TEXT", "photo_file_id TEXT"]:
+for col_def in ["description TEXT", "photo_file_id TEXT", "approved_group_id TEXT", "rejected_group_id TEXT"]:
     try:
         cursor.execute(f"ALTER TABLE projects ADD COLUMN {col_def}")
     except sqlite3.OperationalError:
@@ -538,12 +540,41 @@ async def _ask_verifier(message: Message, state: FSMContext):
 @dp.message(CreateProjectState.verifier_username)
 async def process_verifier_username(message: Message, state: FSMContext):
     raw_username = message.text.strip().replace("@", "").lower()
+    await state.update_data(verifier_username=raw_username)
+    await state.set_state(CreateProjectState.approved_group)
+    await message.answer(
+        "✅ Tasdiqlangan skrinshotlar avtomatik tushadigan GURUH ID sini kiriting (ixtiyoriy).\n\n"
+        "ID olish uchun: botni o'sha guruhga admin qilib qo'shing, guruhga bir xabar yozing, "
+        "keyin uni @userinfobot ga forward qiling — u guruh ID sini ko'rsatadi (masalan: -1001234567890).\n\n"
+        "Agar bu funksiyani kerak bo'lmasa, «⏭ O'tkazib yuborish» tugmasini bosing.",
+        reply_markup=skip_keyboard()
+    )
+
+
+@dp.message(CreateProjectState.approved_group)
+async def process_approved_group(message: Message, state: FSMContext):
+    group_id = None if message.text == "⏭ O'tkazib yuborish" else message.text.strip()
+    await state.update_data(approved_group_id=group_id)
+    await state.set_state(CreateProjectState.rejected_group)
+    await message.answer(
+        "❌ Rad etilgan skrinshotlar avtomatik tushadigan GURUH ID sini kiriting (ixtiyoriy).\n\n"
+        "Xuddi shu tarzda oling (yuqoridagi ko'rsatma bo'yicha), yoki o'tkazib yuboring.",
+        reply_markup=skip_keyboard()
+    )
+
+
+@dp.message(CreateProjectState.rejected_group)
+async def process_rejected_group(message: Message, state: FSMContext):
+    group_id = None if message.text == "⏭ O'tkazib yuborish" else message.text.strip()
+    await state.update_data(rejected_group_id=group_id)
     data = await state.get_data()
+    raw_username = data['verifier_username']
 
     cursor.execute(
-        "INSERT INTO projects (project_name, open_budget_link, leader_id, verifier_username, target_votes, description, photo_file_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO projects (project_name, open_budget_link, leader_id, verifier_username, target_votes, "
+        "description, photo_file_id, approved_group_id, rejected_group_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (data['project_name'], data['link'], message.from_user.id, raw_username, data['target_votes'],
-         data.get('description'), data.get('photo_file_id'))
+         data.get('description'), data.get('photo_file_id'), data.get('approved_group_id'), data.get('rejected_group_id'))
     )
     conn.commit()
     await state.clear()
@@ -627,7 +658,7 @@ async def handle_photo(message: Message, state: FSMContext):
 
     verifier_kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="✅ Tasdiqlash", callback_data=f"app_{message.from_user.id}_{p_id}_{photo_id}"),
-        InlineKeyboardButton(text="❌ Rad etish", callback_data=f"rej_{message.from_user.id}_{photo_id}")
+        InlineKeyboardButton(text="❌ Rad etish", callback_data=f"rej_{message.from_user.id}_{p_id}_{photo_id}")
     ]])
 
     try:
@@ -665,8 +696,11 @@ async def process_verification(call: CallbackQuery):
             conn.commit()
             ticket_msg = "\n🎟 10 ta ovoz yig'ganingiz uchun +1 ta chipta berildi!"
 
-        cursor.execute("SELECT total_votes, target_votes, project_name, leader_id FROM projects WHERE id = ?", (p_id,))
+        cursor.execute("SELECT total_votes, target_votes, project_name, leader_id, approved_group_id FROM projects WHERE id = ?", (p_id,))
         row = cursor.fetchone()
+
+        target_group = row[4] if row else None
+
         if row and row[0] >= row[1]:
             cursor.execute("DELETE FROM projects WHERE id = ?", (p_id,))
             conn.commit()
@@ -681,31 +715,38 @@ async def process_verification(call: CallbackQuery):
             pass
         await call.message.edit_caption(caption=(call.message.caption or "") + "\n\n✅ Tasdiqlandi va ball berildi")
 
-        if APPROVED_GROUP_ID and call.message.photo:
+        group_to_use = target_group or APPROVED_GROUP_ID
+        if group_to_use and call.message.photo:
             try:
                 await bot.send_photo(
-                    chat_id=APPROVED_GROUP_ID,
+                    chat_id=group_to_use,
                     photo=call.message.photo[-1].file_id,
                     caption=(call.message.caption or "") + "\n\n✅ Tasdiqlangan"
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logging.error(f"Tasdiqlangan guruhga yuborishda xato: {e}")
     else:
+        p_id, photo_id = int(parts[2]), parts[3]
+        cursor.execute("SELECT rejected_group_id FROM projects WHERE id = ?", (p_id,))
+        row = cursor.fetchone()
+        target_group = row[0] if row else None
+
         try:
             await bot.send_message(user_id, "❌ Ovozingiz rad etildi. Skrinshot talabga javob bermadi.")
         except Exception:
             pass
         await call.message.edit_caption(caption=(call.message.caption or "") + "\n\n❌ Rad etildi")
 
-        if REJECTED_GROUP_ID and call.message.photo:
+        group_to_use = target_group or REJECTED_GROUP_ID
+        if group_to_use and call.message.photo:
             try:
                 await bot.send_photo(
-                    chat_id=REJECTED_GROUP_ID,
+                    chat_id=group_to_use,
                     photo=call.message.photo[-1].file_id,
                     caption=(call.message.caption or "") + "\n\n❌ Rad etilgan"
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logging.error(f"Rad etilgan guruhga yuborishda xato: {e}")
 
     await call.answer()
 
